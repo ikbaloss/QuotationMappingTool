@@ -1,0 +1,996 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quotation Mapping Tool</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: row;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #left-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            width: 250px;
+            padding: 10px;
+            background: #f5f5f5;
+            height: 100%;
+            overflow-y: auto;
+        }
+        #title {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0 5px 0;
+            text-align: center;
+            width: 100%;
+        }
+        #subtitle {
+            font-size: 16px;
+            margin: 5px 0;
+            text-align: center;
+            width: 100%;
+        }
+        #citation-link, #prompt-link {
+            font-size: 14px;
+            color: blue;
+            text-decoration: underline;
+            cursor: pointer;
+            margin: 5px 0;
+            text-align: center;
+            width: 100%;
+        }
+        #citation-link:hover, #prompt-link:hover {
+            color: darkblue;
+        }
+        #controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+        }
+        #graph-container {
+            flex: 1;
+            width: calc(100% - 250px);
+            height: 100%;
+            overflow: hidden;
+            position: relative;
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+            background: #f5f5f5;
+        }
+        .node {
+            stroke: #000;
+            stroke-width: 1.5px;
+            cursor: pointer;
+        }
+        .edge {
+            fill: none;
+            stroke-width: 2px;
+            cursor: pointer;
+        }
+        .edge-highlight {
+            stroke: #ff0;
+            stroke-width: 4px;
+            animation: blink 0.5s infinite;
+        }
+        @keyframes blink {
+            50% { opacity: 0.3; }
+        }
+        .label {
+            font-size: 12px;
+            fill: #000;
+            pointer-events: none;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        #file-input {
+            margin: 10px 0;
+            width: 100%;
+        }
+        select, input[type="text"] {
+            padding: 5px;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        select:disabled, input[type="text"]:disabled {
+            opacity: 0.5;
+        }
+        #search-container {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            width: 100%;
+        }
+        #reference-filter-container {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            width: 100%;
+            display: none; /* Hidden by default */
+        }
+        #reference-checkboxes {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        #reference-checkboxes label {
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        #search-button, #save-csv-button, #save-graph-button, #refresh-button {
+            padding: 5px;
+            font-size: 14px;
+            cursor: pointer;
+            width: 100%;
+        }
+        #search-button:disabled, #save-csv-button:disabled, #save-graph-button:disabled, #refresh-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        #search-popup, #citation-popup, #node-statements-popup, #edge-details-popup, #prompt-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            max-height: 400px;
+            width: 400px;
+            overflow-y: auto;
+            display: none;
+            z-index: 1000;
+        }
+        #search-popup-header, #citation-popup-header, #node-statements-popup-header, #edge-details-popup-header, #prompt-popup-header {
+            background: #f0f0f0;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+        }
+        #search-results, #citation-content, #node-statements-results, #edge-details-content, #prompt-content {
+            padding: 10px;
+        }
+        .search-result, .statement-result {
+            padding: 5px;
+            cursor: pointer;
+        }
+        .search-result:hover, .statement-result:hover {
+            background: #e0e0e0;
+        }
+        #close-search-popup, #close-citation-popup, #close-node-statements-popup, #close-edge-details-popup, #close-prompt-popup {
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .highlight {
+            color: red;
+        }
+        #citation-content, #prompt-content {
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+        #edge-details-content div {
+            margin-bottom: 15px;
+        }
+        #edge-details-content .label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 2px;
+        }
+        #edge-details-content .content {
+            display: block;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <div id="left-panel">
+        <div id="title">Quotation Mapping Tool</div>
+        <div id="subtitle">by Ikbal Maulana @2025</div>
+        <div id="citation-link">Citing Quotation Mapping Tool</div>
+        <div id="prompt-link">Copy the prompt to generate a Quotation Map GML file</div>
+        <input type="file" id="file-input" accept=".gml">
+        <div id="controls">
+            <select id="actor-select" disabled>
+                <option value="">Select Authors</option>
+            </select>
+            <select id="concept-select" disabled>
+                <option value="">Select a Category</option>
+            </select>
+            <div id="search-container">
+                <input type="text" id="search-input" placeholder="Enter search term (e.g., harm, harm*, *harm*)" disabled>
+                <button id="search-button" disabled>Search</button>
+            </div>
+            <div id="reference-filter-container">
+                <div id="reference-checkboxes"></div>
+                <button id="refresh-button" disabled>Refresh</button>
+            </div>
+            <button id="save-csv-button" disabled>Save Authors + Quotations</button>
+            <button id="save-graph-button" disabled>Save Graph</button>
+        </div>
+    </div>
+    <div id="graph-container"></div>
+    <div id="search-popup">
+        <div id="search-popup-header">
+            <span>Search Results</span>
+            <span id="close-search-popup">✖</span>
+        </div>
+        <div id="search-results"></div>
+    </div>
+    <div id="citation-popup">
+        <div id="citation-popup-header">
+            <span>BibTeX Citation</span>
+            <span id="close-citation-popup">✖</span>
+        </div>
+        <div id="citation-content">
+@software{maulana2025DNV,
+  author       = {Maulana, Ikbal},
+  title        = {{Quotation Network Visualizer} (Version 0.07)},
+  year         = {2025},
+  type         = {Computer software},
+  address      = {Jakarta, Indonesia},
+  institution  = {National Research and Innovation Agency (BRIN)},
+}
+        </div>
+    </div>
+    <div id="node-statements-popup">
+        <div id="node-statements-popup-header">
+            <span>Node Statements</span>
+            <span id="close-node-statements-popup">✖</span>
+        </div>
+        <div id="node-statements-results"></div>
+    </div>
+    <div id="edge-details-popup">
+        <div id="edge-details-popup-header">
+            <span>Edge Details</span>
+            <span id="close-edge-details-popup">✖</span>
+        </div>
+        <div id="edge-details-content"></div>
+    </div>
+    <div id="prompt-popup">
+        <div id="prompt-popup-header">
+            <span>GML Prompt</span>
+            <span id="close-prompt-popup">✖</span>
+        </div>
+        <div id="prompt-content">
+Instructions for Constructing Nodes and Edges from the attached article
+Identify key important statements either of the article or quoted statements from references (identify authors, year and title).
+Categorize each statement based on its content.
+Ensure that all extracted information—including author, year, statement, title,  statement, and category—do not contain any quotation marks, whether double ("), single ('), or curly (“ ” ‘ ’).
+Assign the cleaned and categorized information to the following node and edge attributes of a gml graph:
+
+Node Structure
+Each node must include the following attributes:
+id: A unique integer identifier for the node.
+type: Either "Actor" or "Concept".
+label:
+- For "Actor" nodes: the name of the author of the article.
+- For "Concept" nodes: the category label.
+
+description:
+- For "Actor" nodes: author, year, title from the references of the article or the article itself (source) 
+- For "Concept" nodes: an empty string ("").
+
+Edge Structure
+Each edge must:
+Connect a source node of type "Actor" to a target node of type "Concept".
+Include the following attributes to the edge:
+source: The id of the "Actor" node.
+target: The id of the "Concept" node.
+statement: The actor’s statement (quotation from the article) referring to the concept, which reflects the assigned category.
+reference: the name of the file or source from which the statement was derived.
+agreement: Indicates the actor’s stance toward the concept:
+ - "Yes" if the actor agrees with or supports the concept.
+ - "No" if the actor opposes or rejects the concept.
+
+Connectivity Rules
+Every "Actor" node must be connected to at least one "Concept" node via an edge.
+There must be no isolated nodes; all nodes must be part of the network through at least one connection.
+        </div>
+    </div>
+    <script>
+        // Helper function to emulate Element.closest for D3
+        function closestElement(element, selector) {
+            while (element) {
+                if (element.matches && element.matches(selector)) {
+                    return element;
+                }
+                element = element.parentElement;
+            }
+            return null;
+        }
+
+        // Set up SVG and container
+        const width = window.innerWidth - 250; // Adjust for left panel
+        const height = window.innerHeight;
+        const svg = d3.select("#graph-container")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height);
+
+        // Add zoom behavior for panning
+        let currentTransform = d3.zoomIdentity;
+        const zoom = d3.zoom()
+            .scaleExtent([0.1, 4])
+            .on("zoom", (event) => {
+                currentTransform = event.transform;
+                g.attr("transform", currentTransform);
+            });
+        svg.call(zoom);
+
+        // Create group for graph elements
+        const g = svg.append("g");
+
+        // Tooltip for hover interactions
+        const tooltip = d3.select("body")
+            .append("div")
+            .attr("class", "tooltip")
+            .style("opacity", 0);
+
+        // Parse GML file and extract references
+        function parseGML(text) {
+            const nodes = [];
+            const edges = [];
+            const references = new Set();
+            let currentNode = null;
+            let currentEdge = null;
+            let inNode = false;
+            let inEdge = false;
+
+            const lines = text.split('\n');
+            for (let line of lines) {
+                line = line.trim();
+                if (line.startsWith("node [")) {
+                    inNode = true;
+                    currentNode = {};
+                } else if (line.startsWith("edge [")) {
+                    inEdge = true;
+                    currentEdge = {};
+                } else if (line === "]") {
+                    if (inNode && currentNode.id) {
+                        nodes.push(currentNode);
+                        inNode = false;
+                        currentNode = null;
+                    } else if (inEdge && currentEdge.source && currentEdge.target) {
+                        edges.push(currentEdge);
+                        if (currentEdge.reference) {
+                            references.add(currentEdge.reference);
+                        }
+                        inEdge = false;
+                        currentEdge = null;
+                    }
+                } else if (inNode) {
+                    const match = line.match(/(\w+)\s+"?([^"]*)"?/);
+                    if (match) {
+                        currentNode[match[1]] = match[2];
+                    }
+                } else if (inEdge) {
+                    const match = line.match(/(\w+)\s+"?([^"]*)"?/);
+                    if (match) {
+                        currentEdge[match[1]] = match[2];
+                    }
+                }
+            }
+
+            // Link edges to node objects
+            edges.forEach(edge => {
+                edge.source = nodes.find(n => n.id === edge.source);
+                edge.target = nodes.find(n => n.id === edge.target);
+            });
+
+            return { nodes, edges, references: Array.from(references) };
+        }
+
+        // Populate reference filter checkboxes
+        function populateReferenceFilters(references) {
+            const container = d3.select("#reference-filter-container");
+            const checkboxContainer = d3.select("#reference-checkboxes");
+            checkboxContainer.selectAll("*").remove();
+
+            if (references.length > 1) {
+                container.style("display", "block");
+                d3.select("#refresh-button").property("disabled", false);
+
+                checkboxContainer.selectAll("label")
+                    .data(references)
+                    .enter()
+                    .append("label")
+                    .html(d => `
+                        <input type="checkbox" value="${d}" checked> ${d}
+                    `);
+            } else {
+                container.style("display", "none");
+                d3.select("#refresh-button").property("disabled", true);
+            }
+        }
+
+        // Filter graph based on selected references
+        function filterGraph(originalData) {
+            const selectedReferences = [];
+            d3.selectAll("#reference-checkboxes input:checked")
+                .each(function() {
+                    selectedReferences.push(this.value);
+                });
+
+            const filteredEdges = originalData.edges.filter(edge =>
+                !edge.reference || selectedReferences.includes(edge.reference)
+            );
+
+            const connectedNodeIds = new Set();
+            filteredEdges.forEach(edge => {
+                if (edge.source) connectedNodeIds.add(edge.source.id);
+                if (edge.target) connectedNodeIds.add(edge.target.id);
+            });
+
+            const filteredNodes = originalData.nodes.filter(node =>
+                connectedNodeIds.has(node.id)
+            );
+
+            return { nodes: filteredNodes, edges: filteredEdges };
+        }
+
+        // Populate dropdown menus
+        function populateDropdowns(nodes) {
+            const actorSelect = d3.select("#actor-select");
+            const conceptSelect = d3.select("#concept-select");
+
+            // Clear existing options
+            actorSelect.selectAll("option:not(:first-child)").remove();
+            conceptSelect.selectAll("option:not(:first-child)").remove();
+
+            // Filter and sort nodes
+            const actors = nodes.filter(d => d.type === "Actor")
+                .sort((a, b) => d3.ascending(a.label || a.id, b.label || b.id));
+            const concepts = nodes.filter(d => d.type === "Concept")
+                .sort((a, b) => d3.ascending(a.label || a.id, b.label || b.id));
+
+            // Add options to dropdowns
+            actorSelect.selectAll("option.actor")
+                .data(actors)
+                .enter()
+                .append("option")
+                .attr("class", "actor")
+                .attr("value", d => d.id)
+                .text(d => d.label || d.id);
+
+            conceptSelect.selectAll("option.concept")
+                .data(concepts)
+                .enter()
+                .append("option")
+                .attr("class", "concept")
+                .attr("value", d => d.id)
+                .text(d => d.label || d.id);
+
+            // Enable dropdowns
+            actorSelect.property("disabled", false);
+            conceptSelect.property("disabled", false);
+        }
+
+        // Search function
+        function searchGraph(term) {
+            const results = [];
+            let regex, matchRegex;
+
+            if (term.includes('*')) {
+                const baseTerm = term.replace(/\*/g, '');
+                const escapedBaseTerm = baseTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                regex = new RegExp(
+                    term.replace(/\*/g, '.*'),
+                    'i'
+                );
+                matchRegex = new RegExp(
+                    `\\b(\\w*${escapedBaseTerm}\\w*)\\b`,
+                    'gi'
+                );
+            } else {
+                regex = new RegExp(`\\b${term}\\b`, 'i');
+                matchRegex = new RegExp(`(\\b${term}\\b)`, 'gi');
+            }
+
+            data.nodes.forEach((node, index) => {
+                if (node.description && regex.test(node.description)) {
+                    const highlightedText = node.description.replace(matchRegex, '<span class="highlight">$1</span>');
+                    results.push({
+                        type: 'node',
+                        id: node.id,
+                        text: node.description,
+                        highlightedText: highlightedText,
+                        label: node.label || node.id
+                    });
+                }
+            });
+
+            data.edges.forEach((edge, index) => {
+                if (edge.statement && regex.test(edge.statement)) {
+                    const highlightedText = edge.statement.replace(matchRegex, '<span class="highlight">$1</span>');
+                    results.push({
+                        type: 'edge',
+                        source: edge.source.id,
+                        target: edge.target.id,
+                        text: edge.statement,
+                        highlightedText: highlightedText
+                    });
+                }
+            });
+
+            return results;
+        }
+
+        // Display search results in popup
+        function displaySearchResults(results) {
+            const popup = d3.select("#search-popup");
+            const resultsDiv = d3.select("#search-results");
+
+            resultsDiv.selectAll("*").remove();
+
+            resultsDiv.selectAll(".search-result")
+                .data(results)
+                .enter()
+                .append("div")
+                .attr("class", "search-result")
+                .html(d => `${d.type === 'node' ? 'Node' : 'Edge'}: ${d.highlightedText}`)
+                .on("click", function(event, d) {
+                    popup.style("display", "none");
+                    if (d.type === 'node') {
+                        const node = data.nodes.find(n => n.id === d.id);
+                        centerNode(node);
+                    } else {
+                        const edge = data.edges.find(e => e.source.id === d.source && e.target.id === d.target);
+                        centerEdge(edge);
+                    }
+                });
+
+            if (results.length > 0) {
+                popup.style("display", "block");
+            } else {
+                popup.style("display", "none");
+                alert("No matches found.");
+            }
+        }
+
+        // Display statements for a node in popup
+        function displayNodeStatements(node) {
+            const popup = d3.select("#node-statements-popup");
+            const resultsDiv = d3.select("#node-statements-results");
+
+            resultsDiv.selectAll("*").remove();
+
+            const statements = data.edges
+                .filter(edge => edge.source.id === node.id || edge.target.id === node.id)
+                .map(edge => ({
+                    statement: edge.statement || '',
+                    sourceId: edge.source.id,
+                    targetId: edge.target.id
+                }));
+
+            resultsDiv.selectAll(".statement-result")
+                .data(statements)
+                .enter()
+                .append("div")
+                .attr("class", "statement-result")
+                .text(d => d.statement || 'No statement')
+                .on("click", function(event, d) {
+                    popup.style("display", "none");
+                    const edge = data.edges.find(e => e.source.id === d.sourceId && e.target.id === d.targetId);
+                    if (edge) {
+                        highlightEdge(edge);
+                    }
+                });
+
+            if (statements.length > 0) {
+                const titleText = node.type === "Actor" ? `Statements of ${node.label || node.id}` : `Statements in ${node.label || node.id}`;
+                d3.select("#node-statements-popup-header span").text(titleText);
+                popup.style("display", "block");
+            } else {
+                popup.style("display", "none");
+                alert("No statements found for this node.");
+            }
+        }
+
+        // Display edge details in popup
+        function displayEdgeDetails(edge) {
+            const popup = d3.select("#edge-details-popup");
+            const contentDiv = d3.select("#edge-details-content");
+
+            contentDiv.selectAll("*").remove();
+
+            const fields = [
+                { label: "Actor", value: edge.source.label || edge.source.id || 'Unknown' },
+                { label: "Title", value: edge.source.description || 'N/A' },
+                { label: "Statement", value: edge.statement || 'No statement' },
+                { label: "Category", value: edge.target.label || edge.target.id || 'Unknown' },
+                { label: "Reference", value: edge.reference || 'N/A' }
+            ];
+
+            contentDiv.selectAll("div")
+                .data(fields)
+                .enter()
+                .append("div")
+                .each(function(d) {
+                    d3.select(this)
+                        .append("div")
+                        .attr("class", "label")
+                        .text(d.label);
+                    d3.select(this)
+                        .append("div")
+                        .attr("class", "content")
+                        .text(d.value);
+                });
+
+            popup.style("display", "block");
+        }
+
+        // Highlight edge by blinking for 5 seconds
+        function highlightEdge(edge) {
+            const edgeElement = g.selectAll(".edge")
+                .filter(d => d.source.id === edge.source.id && d.target.id === edge.target.id);
+
+            edgeElement.classed("edge-highlight", true);
+
+            setTimeout(() => {
+                edgeElement.classed("edge-highlight", false);
+            }, 5000);
+
+            centerEdge(edge);
+        }
+
+        // Export edges to CSV
+        function exportToCSV() {
+            if (!data.nodes.length || !data.edges.length) {
+                alert("No data to export.");
+                return;
+            }
+
+            const csvData = [];
+            csvData.push(['Actor', 'Position/Organization', 'Statement', 'Category', 'Reference']);
+
+            const rows = data.edges
+                .filter(edge => edge.source && edge.target)
+                .map(edge => [
+                    `"${edge.source.label || edge.source.id || ''}"`,
+                    `"${edge.source.description || ''}"`,
+                    `"${edge.statement || ''}"`,
+                    `"${edge.target.label || edge.target.id || ''}"`,
+                    `"${edge.reference || ''}"`
+                ]);
+
+            rows.sort((a, b) => a[0].localeCompare(b[0]));
+
+            csvData.push(...rows);
+
+            const csvContent = csvData.map(row => row.join(',')).join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'discourse_network.csv';
+            link.click();
+            URL.revokeObjectURL(link.href);
+        }
+
+        // Export graph to PNG
+        function exportToPNG() {
+            if (!data.nodes.length) {
+                alert("No graph to export.");
+                return;
+            }
+
+            html2canvas(document.querySelector("#graph-container"), {
+                backgroundColor: '#f5f5f5',
+                scale: 2
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = 'discourse_network.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }).catch(error => {
+                console.error('Error exporting PNG:', error);
+                alert('Failed to export graph as PNG.');
+            });
+        }
+
+        // Center node in view
+        function centerNode(node) {
+            if (!node) return;
+
+            const scale = currentTransform.k || 1;
+            const x = -node.x * scale + width / 2;
+            const y = -node.y * scale + height / 2;
+
+            svg.transition()
+                .duration(750)
+                .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+        }
+
+        // Center edge in view
+        function centerEdge(edge) {
+            if (!edge) return;
+
+            const scale = currentTransform.k || 1;
+            const x = -((edge.source.x + edge.target.x) / 2) * scale + width / 2;
+            const y = -((edge.source.y + edge.target.y) / 2) * scale + height / 2;
+
+            svg.transition()
+                .duration(750)
+                .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+        }
+
+        // Handle file input
+        let originalData = { nodes: [], edges: [], references: [] };
+        d3.select("#file-input").on("change", function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                originalData = parseGML(text);
+                data = { nodes: [...originalData.nodes], edges: [...originalData.edges] };
+                populateDropdowns(originalData.nodes);
+                populateReferenceFilters(originalData.references);
+                d3.select("#search-input").property("disabled", false);
+                d3.select("#search-button").property("disabled", false);
+                d3.select("#save-csv-button").property("disabled", false);
+                d3.select("#save-graph-button").property("disabled", false);
+                renderGraph(data);
+            };
+            reader.readAsText(file);
+        });
+
+        // Handle refresh button
+        d3.select("#refresh-button").on("click", function(event) {
+            event.stopPropagation();
+            const filteredData = filterGraph(originalData);
+            data = filteredData;
+            populateDropdowns(filteredData.nodes);
+            renderGraph(filteredData);
+        });
+
+        // Handle dropdown selection
+        d3.select("#actor-select").on("change", function(event) {
+            const nodeId = this.value;
+            const node = data.nodes.find(d => d.id === nodeId);
+            centerNode(node);
+        });
+
+        d3.select("#concept-select").on("change", function(event) {
+            const nodeId = this.value;
+            const node = data.nodes.find(d => d.id === nodeId);
+            centerNode(node);
+        });
+
+        // Handle search
+        d3.select("#search-button").on("click", function(event) {
+            event.stopPropagation();
+            const term = d3.select("#search-input").property("value").trim();
+            if (term) {
+                const results = searchGraph(term);
+                displaySearchResults(results);
+            }
+        });
+
+        // Handle enter key in search input
+        d3.select("#search-input").on("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.stopPropagation();
+                const term = this.value.trim();
+                if (term) {
+                    const results = searchGraph(term);
+                    displaySearchResults(results);
+                }
+            }
+        });
+
+        // Handle citation link click
+        d3.select("#citation-link").on("click", function(event) {
+            event.stopPropagation();
+            d3.select("#citation-popup").style("display", "block");
+        });
+
+        // Handle prompt link click
+        d3.select("#prompt-link").on("click", function(event) {
+            event.stopPropagation();
+            d3.select("#prompt-popup").style("display", "block");
+        });
+
+        // Close search popup
+        d3.select("#close-search-popup").on("click", function() {
+            d3.select("#search-popup").style("display", "none");
+        });
+
+        // Close citation popup
+        d3.select("#close-citation-popup").on("click", function() {
+            d3.select("#citation-popup").style("display", "none");
+        });
+
+        // Close node statements popup
+        d3.select("#close-node-statements-popup").on("click", function() {
+            d3.select("#node-statements-popup").style("display", "none");
+        });
+
+        // Close edge details popup
+        d3.select("#close-edge-details-popup").on("click", function() {
+            d3.select("#edge-details-popup").style("display", "none");
+        });
+
+        // Close prompt popup
+        d3.select("#close-prompt-popup").on("click", function() {
+            d3.select("#prompt-popup").style("display", "none");
+        });
+
+        // Handle click outside popups or on popups to close them
+        d3.select("body").on("click", function(event) {
+            const target = event.target;
+            if (closestElement(target, "#search-popup") ||
+                closestElement(target, "#citation-popup") ||
+                closestElement(target, "#node-statements-popup") ||
+                closestElement(target, "#edge-details-popup") ||
+                closestElement(target, "#prompt-popup") ||
+                closestElement(target, ".node") ||
+                closestElement(target, ".edge")) {
+                return;
+            }
+            d3.select("#search-popup").style("display", "none");
+            d3.select("#citation-popup").style("display", "none");
+            d3.select("#node-statements-popup").style("display", "none");
+            d3.select("#edge-details-popup").style("display", "none");
+            d3.select("#prompt-popup").style("display", "none");
+        });
+
+        // Handle click on edge details popup to close it
+        d3.select("#edge-details-popup").on("click", function() {
+            d3.select("#edge-details-popup").style("display", "none");
+        });
+
+        // Handle CSV export
+        d3.select("#save-csv-button").on("click", exportToCSV);
+
+        // Handle PNG export
+        d3.select("#save-graph-button").on("click", exportToPNG);
+
+        // Render graph
+        let data = { nodes: [], edges: [] }; // Store filtered data
+        function renderGraph(graphData) {
+            data = graphData; // Update global data
+            // Clear previous graph
+            g.selectAll("*").remove();
+
+            // Initialize force simulation
+            const simulation = d3.forceSimulation(data.nodes)
+                .force("link", d3.forceLink(data.edges).id(d => d.id).distance(100))
+                .force("charge", d3.forceManyBody().strength(-200))
+                .force("center", d3.forceCenter(width / 2, height / 2));
+
+            // Draw edges
+            const link = g.selectAll(".edge")
+                .data(data.edges)
+                .enter()
+                .append("line")
+                .attr("class", "edge")
+                .attr("stroke", d => d.agreement === "Yes" ? "blue" : d.agreement === "No" ? "red" : "#ccc")
+                .on("mouseover", function(event, d) {
+                    if (d.statement) {
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", 0.9);
+                        tooltip.html(d.statement)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    }
+                })
+                .on("mouseout", function() {
+                    tooltip.transition()
+                        .duration(500)
+                        .style("opacity", 0);
+                })
+                .on("click", function(event, d) {
+                    event.stopPropagation(); // Prevent body click from closing popup immediately
+                    displayEdgeDetails(d);
+                })
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            // Draw nodes
+            const node = g.selectAll(".node")
+                .data(data.nodes)
+                .enter()
+                .append("circle")
+                .attr("class", "node")
+                .attr("r", 8)
+                .attr("fill", d => d.type === "Actor" ? "brown" : d.type === "Concept" ? "green" : "#ccc")
+                .on("mouseover", function(event, d) {
+                    if (d.description) {
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", 0.9);
+                        tooltip.html(d.description)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    }
+                })
+                .on("mouseout", function() {
+                    tooltip.transition()
+                        .duration(500)
+                        .style("opacity", 0);
+                })
+                .on("click", function(event, d) {
+                    event.stopPropagation(); // Prevent body click from closing popup immediately
+                    displayNodeStatements(d);
+                })
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            // Draw node labels
+            const label = g.selectAll(".label")
+                .data(data.nodes)
+                .enter()
+                .append("text")
+                .attr("class", "label")
+                .attr("dx", 12)
+                .attr("dy", ".35em")
+                .text(d => d.label || d.id);
+
+            // Update positions on tick
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                node
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+
+                label
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
+            });
+
+            // Drag functions
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+        }
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'95d6bfff2e81ea85',t:'MTc1MjIyMDY0Ni4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
