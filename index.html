@@ -727,6 +727,7 @@ There must be no isolated nodes; all nodes must be part of the network through a
         }
         */
 
+        // Updated function with yellow blink effect
         function centerNode(node) {
             if (!node) return;
         
@@ -739,19 +740,22 @@ There must be no isolated nodes; all nodes must be part of the network through a
                 .duration(750)
                 .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
         
-            // Blink effect
-            const nodeElement = d3.selectAll("circle") // adjust selector if nodes are not circles
+            // Select the node element
+            const nodeElement = d3.selectAll("circle") // change selector if your nodes are not <circle>
                 .filter(d => d.id === node.id);
+        
+            // Store the original color
+            const originalColor = nodeElement.style("fill");
         
             let blinkCount = 0;
             const blinkInterval = setInterval(() => {
                 nodeElement.transition()
                     .duration(200)
-                    .style("opacity", blinkCount % 2 === 0 ? 0.2 : 1);
+                    .style("fill", blinkCount % 2 === 0 ? "yellow" : originalColor);
                 blinkCount++;
-                if (blinkCount > 6) { // 3 seconds total, 200ms × 6 toggles
+                if (blinkCount > 6) { // 3 seconds total (500ms × 6 toggles)
                     clearInterval(blinkInterval);
-                    nodeElement.style("opacity", 1); // reset
+                    nodeElement.style("fill", originalColor); // reset to original color
                 }
             }, 500);
         }
