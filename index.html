@@ -713,6 +713,7 @@ There must be no isolated nodes; all nodes must be part of the network through a
         }
 
         // Center node in view
+        /*
         function centerNode(node) {
             if (!node) return;
 
@@ -724,6 +725,37 @@ There must be no isolated nodes; all nodes must be part of the network through a
                 .duration(750)
                 .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
         }
+        */
+
+        function centerNode(node) {
+            if (!node) return;
+        
+            const scale = currentTransform.k || 1;
+            const x = -node.x * scale + width / 2;
+            const y = -node.y * scale + height / 2;
+        
+            // Center the node
+            svg.transition()
+                .duration(750)
+                .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+        
+            // Blink effect
+            const nodeElement = d3.selectAll("circle") // adjust selector if nodes are not circles
+                .filter(d => d.id === node.id);
+        
+            let blinkCount = 0;
+            const blinkInterval = setInterval(() => {
+                nodeElement.transition()
+                    .duration(200)
+                    .style("opacity", blinkCount % 2 === 0 ? 0.2 : 1);
+                blinkCount++;
+                if (blinkCount > 6) { // 3 seconds total, 200ms × 6 toggles
+                    clearInterval(blinkInterval);
+                    nodeElement.style("opacity", 1); // reset
+                }
+            }, 500);
+        }
+
 
         // Center edge in view
         function centerEdge(edge) {
