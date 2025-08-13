@@ -740,26 +740,23 @@ There must be no isolated nodes; all nodes must be part of the network through a
                 .duration(750)
                 .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
         
-            // Select the node element
-            const nodeElement = d3.selectAll("circle") // change selector if your nodes are not <circle>
+            // Select the correct node element
+            const nodeElement = d3.selectAll(".node")
                 .filter(d => d.id === node.id);
         
-            // Store the original color
-            const originalColor = nodeElement.style("fill");
+            // Store the original color (from attr, not style)
+            const originalColor = nodeElement.attr("fill");
         
             let blinkCount = 0;
             const blinkInterval = setInterval(() => {
-                nodeElement.transition()
-                    .duration(200)
-                    .style("fill", blinkCount % 2 === 0 ? "yellow" : originalColor);
+                nodeElement.attr("fill", blinkCount % 2 === 0 ? "yellow" : originalColor);
                 blinkCount++;
-                if (blinkCount > 6) { // 3 seconds total (500ms × 6 toggles)
+                if (blinkCount > 5) { // 3 seconds total (500ms × 6 toggles)
                     clearInterval(blinkInterval);
-                    nodeElement.style("fill", originalColor); // reset to original color
+                    nodeElement.attr("fill", originalColor); // reset to original color
                 }
             }, 500);
         }
-
 
         // Center edge in view
         function centerEdge(edge) {
